@@ -11,6 +11,10 @@ public class Main {
             AudioManager audioManager = AudioManager.getInstance();
             audioManager.loadAllAudio();
             
+            // Инициализация менеджера текстур
+            TextureManager textureManager = TextureManager.getInstance();
+            textureManager.loadAllTextures();
+            
             // Инициализация настроек игры
             GamePreferences.getInstance();
             
