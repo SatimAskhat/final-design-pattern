@@ -35,6 +35,7 @@ public class GamePanel extends JPanel implements ActionListener {
     private boolean gameOver = false;
     private boolean waitForKeyPress = false;
     private boolean allCoinsCollected = false;
+    private int totalCoins = 0; // Общее количество монет на уровне
     
     // Чекпоинты
     private double checkpointX;
@@ -46,6 +47,7 @@ public class GamePanel extends JPanel implements ActionListener {
     // Менеджеры игры
     private GamePreferences preferences;
     private AudioManager audioManager;
+    private TextureManager textureManager;
     
     /**
      * Конструктор игровой панели с указанным уровнем
@@ -54,6 +56,10 @@ public class GamePanel extends JPanel implements ActionListener {
         this.level = level;
         this.preferences = GamePreferences.getInstance();
         this.audioManager = AudioManager.getInstance();
+        this.textureManager = TextureManager.getInstance();
+        
+        // Загружаем все текстуры
+        textureManager.loadAllTextures();
         
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
         setBackground(new Color(135, 206, 235)); // Светло-голубой цвет (Sky Blue)
@@ -63,9 +69,22 @@ public class GamePanel extends JPanel implements ActionListener {
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
+                int keyCode = e.getKeyCode();
+                
+                // Обработка клавиши Escape для паузы
+                if (keyCode == KeyEvent.VK_ESCAPE) {
+                    handleEscapeKey();
+                    return;
+                }
+                
                 // Если ожидаем нажатия клавиши для начала уровня
                 if (waitForKeyPress) {
                     waitForKeyPress = false;
+                    return;
+                }
+                
+                // Если игра на паузе, не обрабатываем другие клавиши
+                if (gamePaused) {
                     return;
                 }
                 
@@ -79,9 +98,6 @@ public class GamePanel extends JPanel implements ActionListener {
                     case KeyEvent.VK_SPACE:
                     case KeyEvent.VK_UP:
                         jumpPressed = true;
-                        break;
-                    case KeyEvent.VK_ESCAPE:
-                        handleEscapeKey();
                         break;
                     case KeyEvent.VK_R:
                         // Рестарт уровня, если игра окончена
@@ -104,10 +120,6 @@ public class GamePanel extends JPanel implements ActionListener {
                     case KeyEvent.VK_SPACE:
                     case KeyEvent.VK_UP:
                         jumpPressed = false;
-                        break;
-                    case KeyEvent.VK_ESCAPE:
-                        // Обработка нажатия Escape - пауза/меню
-                        handleEscapeKey();
                         break;
                 }
             }
@@ -155,7 +167,7 @@ public class GamePanel extends JPanel implements ActionListener {
         
         // Создаем платформы в зависимости от уровня
         platforms = new ArrayList<>();
-        platforms.add(new Platform(0, HEIGHT - 50, WIDTH, 50)); // Земля
+        platforms.add(new Platform(0, HEIGHT - 50, WIDTH, 50, true)); // Земля с текстурой травы и земли под ней
         
         // Разные конфигурации платформ для разных уровней
         switch (level) {
@@ -295,6 +307,9 @@ public class GamePanel extends JPanel implements ActionListener {
         enemies = new ArrayList<>();
         coins = new ArrayList<>();
         
+        // Сбрасываем счетчик общего количества монет на уровне
+        totalCoins = 0;
+        
         switch (level) {
             case 1: // Уровень 1 - Несколько монет, нет врагов
                 // Монеты размещены над платформами
@@ -303,6 +318,7 @@ public class GamePanel extends JPanel implements ActionListener {
                 coins.add(new Coin(250, HEIGHT - 330, 15, 15)); // Над третьей платформой
                 coins.add(new Coin(550, HEIGHT - 430, 15, 15)); // Над четвертой платформой
                 coins.add(new Coin(400, HEIGHT - 80, 15, 15));  // Над землей
+                totalCoins = 5;
                 break;
                 
             case 2: // Уровень 2 - Монеты на лестнице, один враг
@@ -317,6 +333,7 @@ public class GamePanel extends JPanel implements ActionListener {
                 
                 // Враг на земле, чтобы не мешал на первых платформах
                 enemies.add(new Enemy(300, HEIGHT - 80, 30, 30, 2.0f));
+                totalCoins = 10;
                 break;
                 
             case 3: // Уровень 3 - Зигзагообразный путь
@@ -336,6 +353,7 @@ public class GamePanel extends JPanel implements ActionListener {
                 // Враги на широких платформах, чтобы не падали
                 enemies.add(new Enemy(150, HEIGHT - 80, 30, 30, 2.0f)); // На земле
                 enemies.add(new Enemy(WIDTH - 250, HEIGHT - 180, 30, 30, -2.0f)); // На первой правой платформе
+                totalCoins = 8;
                 break;
                 
             case 4: // Уровень 4 - Пирамида
@@ -517,28 +535,39 @@ public class GamePanel extends JPanel implements ActionListener {
      * Обработка нажатия клавиши Escape
      */
     private void handleEscapeKey() {
-        if (levelCompleted || gameOver) {
-            // Если уровень завершен или игра окончена, возвращаемся в меню
+        // Если уровень завершен, игра окончена или игра выиграна
+        if (levelCompleted || gameOver || gameWon) {
             returnToMenu();
-        } else {
-            // Иначе ставим игру на паузу
-            gamePaused = !gamePaused;
-            
-            // Воспроизводим звук паузы
-            if (preferences.isSoundEnabled()) {
-                audioManager.playSound("pause");
-            }
-            
-            if (gamePaused) {
-                // Останавливаем таймер и музыку
-                timer.stop();
-                audioManager.pauseMusic();
-            } else {
-                // Возобновляем таймер и музыку
-                timer.start();
-                audioManager.resumeMusic();
-            }
+            return;
         }
+        
+        // Переключаем состояние паузы
+        gamePaused = !gamePaused;
+        
+        // Воспроизводим звук паузы
+        if (preferences.isSoundEnabled()) {
+            audioManager.playSound("pause");
+        }
+        
+        // Обрабатываем состояние паузы
+        if (gamePaused) {
+            System.out.println("Game paused"); // Отладочный вывод
+            // Останавливаем таймер и музыку
+            if (timer.isRunning()) {
+                timer.stop();
+            }
+            audioManager.pauseMusic();
+        } else {
+            System.out.println("Game resumed"); // Отладочный вывод
+            // Возобновляем таймер и музыку
+            if (!timer.isRunning()) {
+                timer.start();
+            }
+            audioManager.resumeMusic();
+        }
+        
+        // Вызываем перерисовку панели
+        repaint();
     }
     
     /**
@@ -612,6 +641,10 @@ public class GamePanel extends JPanel implements ActionListener {
      * Обновление игровой логики
      */
     private void update() {
+        // Если игра на паузе, не обновляем игровую логику
+        if (gamePaused) {
+            return;
+        }
         // Обработка ввода
         if (leftPressed) {
             player.moveLeft();
@@ -687,9 +720,10 @@ public class GamePanel extends JPanel implements ActionListener {
             }
         }
         
-        // Проверка коллизий с монетами
+        // Обновление и проверка коллизий с монетами
         for (int i = 0; i < coins.size(); i++) {
             Coin coin = coins.get(i);
+            coin.update(); // Обновляем анимацию монеты
             if (player.collidesWith(coin)) {
                 coins.remove(i);
                 i--;
@@ -844,40 +878,30 @@ public class GamePanel extends JPanel implements ActionListener {
         g.setColor(new Color(135, 206, 235)); // Светло-голубой цвет (Sky Blue)
         g.fillRect(0, 0, getWidth(), getHeight());
         
-        // Рисуем платформы
-        g.setColor(new Color(139, 69, 19)); // Коричневый цвет (Saddle Brown)
+        // Рисуем платформы с текстурами
         for (Platform platform : platforms) {
-            g.fillRect((int) platform.getX(), (int) platform.getY(), 
-                       (int) platform.getWidth(), (int) platform.getHeight());
+            platform.render(g);
         }
         
-        // Рисуем монеты
-        g.setColor(Color.YELLOW);
+        // Рисуем монеты с анимацией
         for (Coin coin : coins) {
-            g.fillOval((int) coin.getX(), (int) coin.getY(), 
-                      (int) coin.getWidth(), (int) coin.getHeight());
+            coin.render(g);
         }
         
-        // Рисуем врагов
-        g.setColor(Color.RED);
+        // Рисуем врагов с анимацией
         for (Enemy enemy : enemies) {
-            if (enemy.isAlive()) {
-                g.fillRect((int) enemy.getX(), (int) enemy.getY(), 
-                           (int) enemy.getWidth(), (int) enemy.getHeight());
-            }
+            enemy.render(g);
         }
         
-        // Рисуем игрока
-        g.setColor(Color.BLUE);
-        g.fillRect((int) player.getX(), (int) player.getY(), 
-                   (int) player.getWidth(), (int) player.getHeight());
+        // Рисуем игрока с анимацией
+        player.render(g);
         
         // Рисуем информацию об игре
         g.setColor(Color.BLACK);
         g.setFont(new Font("Arial", Font.BOLD, 16));
         g.drawString("Уровень: " + level, 20, 30);
         g.drawString("Счет: " + score, 20, 50);
-        g.drawString("Монеты: " + (3 - coins.size()) + "/3", 20, 70);
+        g.drawString("Монеты: " + (totalCoins - coins.size()) + "/" + totalCoins, 20, 70);
         
         // Если игра на паузе, рисуем сообщение о паузе
         if (gamePaused) {
