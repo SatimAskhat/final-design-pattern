@@ -1,0 +1,21 @@
+# Исключаем директории для различных IDE
+out/
+
+# Eclipse и другие IDE
+
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/
+
+# Mac OS
+.DS_Store
+
+# Добавляем src/, если оно было исключено
+!src/
